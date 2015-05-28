@@ -1,63 +1,57 @@
 package main
 
 import (
-	"bytes"
-	"flag"
 	"image"
 	"log"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/elazarl/goproxy"
 	goproxy_image "github.com/elazarl/goproxy/ext/image"
-	"github.com/nfnt/resize"
 )
 
 func main() {
+	app.Author("Andrew Montgomery-Hurrell")
+	app.Version("0.0.1")
+	app.Parse(os.Args[1:])
+
 	proxy := goproxy.NewProxyHttpServer()
-	flag.BoolVar(&proxy.Verbose, "verbose", false, "enable verbose logging")
-
-	var imagePath, listen string
-	flag.StringVar(&imagePath, "image", "", "set to a local path or an url to use that image instead of the default one")
-	flag.StringVar(&listen, "listen", ":8080", "ip/port to listen on")
-	flag.Parse()
-
-	var replaceImage image.Image
-	var err error
-
-	imagePathLower := strings.ToLower(imagePath)
-	switch {
-	case imagePath == "":
-		replaceImage, _, err = image.Decode(bytes.NewReader(YouShouldBeWritingPNG))
-	case strings.HasPrefix(imagePathLower, "http://") || strings.HasPrefix(imagePathLower, "https://"):
-		res, err := http.Get(imagePath)
-		if err != nil {
-			log.Fatalf("Could not load image from %q\n", imagePath)
-		}
-		replaceImage, _, err = image.Decode(res.Body)
-		res.Body.Close()
-	default:
-		_, err = os.Stat(imagePath)
-		if err == nil {
-			f, err := os.Open(imagePath)
-			if err != nil {
-				log.Fatalf("Could not load image from %q\n", imagePath)
-			}
-			replaceImage, _, err = image.Decode(f)
-			f.Close()
-		}
+	if *verbose {
+		proxy.Verbose = *verbose
 	}
 
-	if err != nil {
-		log.Fatalf("Error using image %q: %v\n", imagePath, err)
+	var processors []func(image.Image, *goproxy.ProxyCtx) image.Image
+
+	// add replacement processor
+	if replace != nil && *replace {
+		processors = append(processors, replaceImage())
+	}
+
+	// add flip processor
+	if flip != nil && *flip {
+		processors = append(processors, flipImage())
+	}
+
+	// add glitch processor
+	if glitch != nil && *glitch {
+		processors = append(processors, glitchImage())
 	}
 
 	proxy.OnResponse().Do(goproxy_image.HandleImage(func(img image.Image, ctx *goproxy.ProxyCtx) image.Image {
-		dx, dy := img.Bounds().Dx(), img.Bounds().Dy()
-		return resize.Resize(uint(dx), uint(dy), replaceImage, resize.NearestNeighbor)
+		if !*cache {
+			// Disable caching for images
+			ctx.Resp.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			ctx.Resp.Header.Set("Pragma", "no-cache")
+			ctx.Resp.Header.Set("Expires", "0")
+		}
+
+		for _, f := range processors {
+			img = f(img, ctx)
+		}
+
+		return img
 	}))
 
-	log.Printf("Listening on %q\n", listen)
-	log.Fatal(http.ListenAndServe(listen, proxy))
+	log.Printf("Listening on %q\n", *listen)
+	log.Fatal(http.ListenAndServe(*listen, proxy))
 }
