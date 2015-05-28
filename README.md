@@ -15,7 +15,7 @@ writing, so I knocked this up in a few minutes.
 
 ## How?
 
-    ./ysbw -help                                                                                                                                                                                                                                               master  
+    ./ysbw -help
     Usage of ./ysbw:
       -image="": set to a local path or an url to use that image instead of the default one
       -listen=":8080": ip/port to listen on
@@ -23,4 +23,4 @@ writing, so I knocked this up in a few minutes.
       
 Simply run it and set your browsers proxy settings to refer to right place. 
 Chrome under Linux doesn't have a UI for proxy settings, so I run chrome
-via `google-chrome --proxy-server=":8080"` for example.
+via `google-chrome --proxy-server="127.0.0.1:8080"` for example.
