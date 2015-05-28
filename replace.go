@@ -1,5 +1,53 @@
 package main
 
+import (
+	"bytes"
+	"image"
+	"log"
+	"net/http"
+	"strings"
+
+	"github.com/elazarl/goproxy"
+	"github.com/nfnt/resize"
+)
+
+func replaceImage() func(image.Image, *goproxy.ProxyCtx) image.Image {
+	var replaceImg image.Image
+	var err error
+
+	if replaceFile != nil && *replaceFile != nil {
+		replaceImg, _, err = image.Decode(*replaceFile)
+		(*replaceFile).Close()
+	}
+
+	if replaceURL != nil && *replaceURL != nil {
+		url := *replaceURL
+		if strings.HasPrefix(url.Scheme, "http") {
+			res, err := http.Get(url.String())
+			if err != nil {
+				log.Fatalf("Could not load image from %q\n", url.String())
+			}
+			replaceImg, _, err = image.Decode(res.Body)
+			res.Body.Close()
+		} else {
+			log.Fatalf("Unsupported image URL %q\n", url.String())
+		}
+	}
+
+	if (replaceFile == nil || *replaceFile == nil) && (replaceURL == nil || *replaceURL == nil) {
+		replaceImg, _, err = image.Decode(bytes.NewReader(YouShouldBeWritingPNG))
+	}
+
+	if err != nil {
+		log.Fatalf("Error using image: %v\n", err)
+	}
+
+	return func(img image.Image, ctx *goproxy.ProxyCtx) image.Image {
+		dx, dy := img.Bounds().Dx(), img.Bounds().Dy()
+		return resize.Resize(uint(dx), uint(dy), replaceImg, resize.NearestNeighbor)
+	}
+}
+
 // YouShouldBeWritingPNG contains the raw bytes of a PNG telling you that you
 // should be writing
 var YouShouldBeWritingPNG = []byte{
